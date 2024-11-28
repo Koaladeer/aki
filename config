@@ -1,0 +1,36 @@
+# Alpaca API Configuration
+
+# Your Alpaca API Key for authentication. Replace <key_id> with your actual API key.
+os.environ["APCA_API_KEY_ID"] = "<key_id>"  # Example: "your_actual_api_key"
+
+# Your Alpaca API Secret Key for secure access. Replace <secret_key> with your actual secret key.
+os.environ["APCA_API_SECRET_KEY"] = "<secret_key>"  # Example: "your_actual_secret_key"
+
+# Base URL for Alpaca API calls.
+# Use "https://api.alpaca.markets" for live trading accounts.
+# Use "https://paper-api.alpaca.markets" for paper trading (simulated environment).
+os.environ["APCA_API_BASE_URL"] = "https://paper-api.alpaca.markets"  # Example: paper trading endpoint
+
+# Data API URL for accessing market data.
+# This is a separate endpoint for fetching historical and live data.
+os.environ["APCA_API_DATA_URL"] = "https://data.alpaca.markets"
+
+# Retry Settings for API calls
+# ----------------------------
+# Number of times the API client should retry calls that encounter timeouts or specific HTTP status codes.
+os.environ["APCA_RETRY_MAX"] = "3"  # Example: Retry up to 3 times on failure.
+
+# Time (in seconds) to wait between retry attempts.
+os.environ["APCA_RETRY_WAIT"] = "3"  # Example: Wait 3 seconds between retries.
+
+# HTTP status codes for which retries should be attempted.
+# Common retry codes:
+# - 429: Too Many Requests (rate-limiting)
+# - 504: Gateway Timeout
+os.environ["APCA_RETRY_CODES"] = "429,504"  # Comma-separated list of retryable status codes.
+
+# WebSocket Proxy Configuration
+# -----------------------------
+# If using the Alpaca Proxy Agent (for routing API or WebSocket traffic through a local proxy),
+# you need to set this variable with the appropriate WebSocket proxy URL.
+os.environ["DATA_PROXY_WS"] = ""  # Example: Leave blank unless using a proxy.
