@@ -28,6 +28,9 @@ class LSTMBase(nn.Module):
         # Fully Connected Layer
         self.fc = nn.Linear(hidden_size, output_size)
 
+        # Dropout layer before the final fully connected layer
+        self.dropout = nn.Dropout(p=0.2)
+
     def forward(self, x):
         """
         Forward pass for the model.
@@ -47,6 +50,9 @@ class LSTMBase(nn.Module):
 
         # Use the last time step's output for prediction
         out = out[:, -1, :]  # Shape: (batch_size, hidden_size)
+
+        # Apply dropout before the final fully connected layer
+        out = self.dropout(out)
 
         # Fully connected layer
         out = self.fc(out)  # Shape: (batch_size, output_size)

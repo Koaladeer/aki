@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 import numpy as np
 import torch
@@ -12,7 +14,7 @@ from LSTMBase import LSTMBase
 
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
-from utils import convert_change_percent
+from utils import convert_change_percent, encode_date_column, numeric_encode_column
 from sklearn import preprocessing
 
 
@@ -32,6 +34,7 @@ class StockPredictionModel(nn.Module):
         x = self.relu(x)
         x = self.fc3(x)
         return x
+
 
 
 class StockStudyPredictor:
@@ -67,36 +70,6 @@ class StockStudyPredictor:
         self.scaler = preprocessing.MinMaxScaler()
         self.model = None
 
-    def load_and_prepare_data_v1(self):
-        # Load CSV files
-        stocks_df = pd.read_csv(self.stock_file)
-        studies_df = pd.read_csv(self.study_file)
-
-        # Data Preparation
-        #Stock
-        stocks_df['Date'] = pd.to_datetime(stocks_df['Date'], format='%m/%d/%Y')
-        stocks_df['Change %'] = stocks_df['Change %'].str.replace('%', '').astype(float) / 100.0
-        stocks_df['Vol.'] = stocks_df['Vol.'].fillna(0)
-        stocks_df['Vol.'] = stocks_df['Vol.'].apply(convert_change_percent)
-        #Studies
-        studies_df['Start Date'] = pd.to_datetime(studies_df['Start Date'], errors='coerce')
-        studies_df.drop(columns=['Study Type','Collaborators','Results First Posted','Acronym','Study URL'])
-
-        studies_df['Primary Completion Date'] = pd.to_datetime(studies_df['Primary Completion Date'], errors='coerce')
-
-        # Merge and select features
-        merged_data = stocks_df.merge(studies_df, left_on='Date', right_on='Start Date', how='inner')
-        features = merged_data[['Price', 'Open', 'High', 'Low', 'Vol.', 'Conditions', 'Interventions']]
-        targets = merged_data['Change %']#todo:change target to price
-
-        # One-hot encode categorical features
-        features = pd.get_dummies(features, columns=['Conditions', 'Interventions'])
-
-        # Normalize features
-        X = self.scaler.fit(features)
-        y = targets.values
-        return train_test_split(X, y, test_size=0.2, random_state=42)
-
     def load_and_prepare_data_v2(self,sequence_length = 5):
         # Load CSV files
         stocks_df = pd.read_csv(self.stock_file)
@@ -108,8 +81,22 @@ class StockStudyPredictor:
         stocks_df['Vol.'] = stocks_df['Vol.'].fillna(0)
         stocks_df['Vol.'] = stocks_df['Vol.'].apply(convert_change_percent)
 
-        studies_df['Start Date'] = pd.to_datetime(studies_df['Start Date'], errors='coerce')
-        studies_df['Primary Completion Date'] = pd.to_datetime(studies_df['Primary Completion Date'], errors='coerce')
+        #Dates
+        # Convert date columns to datetime
+        date_columns = ["Start Date", "Primary Completion Date", "Completion Date", "First Posted",
+                        "Last Update Posted"]
+        for col in date_columns:
+            studies_df[col] = pd.to_datetime(studies_df[col], errors='coerce')
+            # Numeric encoding for date columns
+            encoded_date_dfs = []
+            for col in date_columns:
+                # Perform numeric encoding
+                encoded_date_df = numeric_encode_column(studies_df[col])
+                encoded_date_dfs.append(encoded_date_df)
+
+            # Concatenate all encoded DataFrames with the original studies_df
+            studies_df = pd.concat([studies_df] + encoded_date_dfs, axis=1)
+
         studies_df['Enrollment'] = studies_df['Enrollment'].fillna(studies_df['Enrollment'].mean())
         studies_df = studies_df[studies_df['Sponsor'] == 'Bayer']
 
@@ -117,32 +104,38 @@ class StockStudyPredictor:
         studies_df = studies_df.drop(
             columns=[
                 'Study Type', 'Collaborators', 'Results First Posted', 'Acronym',
-                'Study URL', 'NCT Number', 'Study Title', 'Interventions',
-                'Results First Posted', 'Study Design', 'Sponsor'
+                'Study URL', 'NCT Number', 'Study Title', 'Interventions', 'Study Design',
+                'Sponsor'
             ]
         )
+
 
         # One-hot encode categorical columns
         studies_df = pd.get_dummies(studies_df, columns=['Sex', 'Phases', 'Age', 'Study Results', 'Study Status'])
 
         # Merge datasets on the date
-        merged_data = stocks_df.merge(studies_df, left_on='Date', right_on='Start Date', how='inner')
-
+        #merged_data = stocks_df.merge(studies_df, left_on='Date', right_on='Start Date', how='inner')
+        merged_data = stocks_df.merge(studies_df, how='cross')  # Kreuzprodukt beider DataFrames
+        merged_data = merged_data[
+            (merged_data['Date'] >= merged_data['Start Date']) &
+            (merged_data['Date'] <= merged_data['Start Date'] + pd.Timedelta(days=7))
+            ]
         # Select features and target
         features = merged_data.drop(
-            columns=['Price', 'Date', 'Start Date', 'Primary Completion Date', 'Completion Date',
-                     'First Posted', 'Last Update Posted']
+            columns=['Change %',"Start Date", "Primary Completion Date", "Completion Date", "First Posted",
+                        "Last Update Posted","Date" ]
         )
-        targets = merged_data['Price']
+        targets = merged_data['Change %']
 
+        # Save the DataFrame as a CSV file
+        filepath = os.path.join("Data", "features.csv")
+        features.to_csv(filepath, index = False)
         # Normalize features
         X = self.scaler.fit_transform(features)
         y = targets.values
 
         # Reshape for LSTM: (batch_size, sequence_length, input_size)
         X_sequences, y_sequences = self.create_sequences(X, y, sequence_length)
-        num_columns = features.shape[1]
-        print("wow:  ",num_columns)
         return train_test_split(X_sequences, y_sequences, test_size=0.2, random_state=42)
 
     def create_sequences(self, X, y, sequence_length):
@@ -166,7 +159,7 @@ class StockStudyPredictor:
 
         return np.array(X_sequences), np.array(y_sequences)
 
-    def train_model(self, X_train, y_train, X_test=None, y_test=None, epochs=10000, lr=0.003):
+    def train_model(self, X_train, y_train, X_test=None, y_test=None, epochs=1000, lr=0.003):
         """
         Trains the model and optionally evaluates it on test data after each epoch.
 
@@ -184,9 +177,9 @@ class StockStudyPredictor:
         #self.model = StockPredictionModel(input_size)
 
         # Parameters
-        input_size = 23  # Number of features
-        hidden_size = 64  # Number of LSTM units
-        num_layers = 2  # Number of LSTM layers
+        input_size = 148  # Number of features
+        hidden_size = 512  # Number of LSTM units
+        num_layers = 20  # Number of LSTM layers
         output_size = 1  # Predicting a single value (e.g., stock price)
         self.model = LSTMBase(input_size,hidden_size,num_layers,output_size)
 
@@ -275,7 +268,7 @@ if __name__ == "__main__":
     predictor = StockStudyPredictor("Data/stock_data.csv", "Data/studies_data_v2.csv")
 
     # Load and prepare data
-    X_train, X_test, y_train, y_test = predictor.load_and_prepare_data_v2(10)
+    X_train, X_test, y_train, y_test = predictor.load_and_prepare_data_v2(7)
 
     # Train the model
     epochs = 100
