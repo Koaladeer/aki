@@ -30,16 +30,3 @@ class AttentionLSTM(nn.Module):
         # Output Layer
         output = self.fc(context_vector)  # (batch_size, output_size)
         return output
-
-
-# Example Usage
-batch_size = 32
-seq_len = 10
-input_size = 8
-hidden_size = 64
-output_size = 1
-
-model = AttentionLSTM(input_size, hidden_size, output_size)
-x = torch.rand(batch_size, seq_len, input_size)
-output = model(x)
-print(output.shape)  # Output: (batch_size, output_size)

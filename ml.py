@@ -10,6 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import matplotlib
 
+from LSTMAttention import AttentionLSTM
 from LSTMBase import LSTMBase
 
 matplotlib.use('TkAgg')
@@ -159,9 +160,9 @@ class StockStudyPredictor:
 
         return np.array(X_sequences), np.array(y_sequences)
 
-    def train_model(self, X_train, y_train, X_test=None, y_test=None, epochs=1000, lr=0.003):
+    def train_model(self, X_train, y_train, X_test=None, y_test=None, epochs=100, lr=0.003):
         """
-        Trains the model and optionally evaluates it on test data after each epoch.
+        Trains the AttentionLSTM model and optionally evaluates it on test data after each epoch.
 
         Parameters:
         - X_train, y_train: Training data and labels
@@ -173,15 +174,10 @@ class StockStudyPredictor:
         - loss_vals: List of training loss values for each epoch
         - test_loss_vals: List of test loss values for each epoch (if test data is provided)
         """
-        input_size = X_train.shape[1]
-        #self.model = StockPredictionModel(input_size)
-
-        # Parameters
-        input_size = 148  # Number of features
+        input_size = X_train.shape[2]  # Number of features
         hidden_size = 512  # Number of LSTM units
-        num_layers = 20  # Number of LSTM layers
         output_size = 1  # Predicting a single value (e.g., stock price)
-        self.model = LSTMBase(input_size,hidden_size,num_layers,output_size)
+        self.model = AttentionLSTM(input_size, hidden_size, output_size)
 
         criterion = nn.MSELoss()
         optimizer = optim.Adam(self.model.parameters(), lr=lr)
@@ -195,10 +191,6 @@ class StockStudyPredictor:
             X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
             y_test_tensor = torch.tensor(y_test, dtype=torch.float32)
 
-        # Training loop remains unchanged
-
-        print(f"Target Range: Min={y_train.min()}, Max={y_train.max()}")
-
         # Track loss values
         loss_vals = []
         test_loss_vals = []
@@ -208,10 +200,7 @@ class StockStudyPredictor:
             self.model.train()
             optimizer.zero_grad()
             outputs = self.model(X_train_tensor)
-            # Convert target to shape (batch_size, 1)
-            y_train_tensor = y_train_tensor.view(-1, 1)  # For training data
-            y_test_tensor = y_test_tensor.view(-1, 1)  # For test data
-
+            y_train_tensor = y_train_tensor.view(-1, 1)  # Reshape target to match output
             loss = criterion(outputs, y_train_tensor)
             loss.backward()
             optimizer.step()
@@ -220,9 +209,9 @@ class StockStudyPredictor:
             # Evaluation phase (if test data is provided)
             if X_test is not None and y_test is not None:
                 self.model.eval()
-                with torch.no_grad():  # Disable gradient computation
+                with torch.no_grad():
                     test_outputs = self.model(X_test_tensor)
-                    test_loss = criterion(test_outputs, y_test_tensor)
+                    test_loss = criterion(test_outputs, y_test_tensor.view(-1, 1))
                     test_loss_vals.append(test_loss.item())
 
             # Print progress every 10 epochs
@@ -231,6 +220,7 @@ class StockStudyPredictor:
                     print(f"Epoch [{epoch + 1}/{epochs}], Loss: {loss.item():.4f}, Test Loss: {test_loss.item():.4f}")
                 else:
                     print(f"Epoch [{epoch + 1}/{epochs}], Loss: {loss.item():.4f}")
+
         return loss_vals, test_loss_vals
 
 
