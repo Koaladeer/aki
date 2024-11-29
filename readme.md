@@ -10,7 +10,7 @@
 - [ ] WIN!
 
 ## General description and goal of the project
-This project aims to explore the relationship between pharmaceutical clinical trials and stock market performance. We use clinical trial data from [clinicaltrials.gov](https://clinicaltrials.gov) and stock price data from the [Alpaca API](https://alpaca.markets) to develop a model that can predict the stock performance of pharmaceutical companies based on their clinical trial activities.
+This project aims to explore the relationship between pharmaceutical clinical trials and stock market performance. We use clinical trial data from [clinicaltrials.gov](https://clinicaltrials.gov) and stock price data from the [Investing.com](https://www.investing.com/equities/bayer-ag-historical-data) to develop a model that can predict the stock performance of pharmaceutical companies based on their clinical trial activities.
 
 ### Goal:
 The goal of this project is to build a machine learning model that can predict short-term price movements of pharma stocks based on clinical trial outcomes, milestones, and other related data.
