@@ -7,6 +7,9 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import matplotlib
+
+from LSTMBase import LSTMBase
+
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from utils import convert_change_percent
@@ -62,7 +65,6 @@ class StockStudyPredictor:
         self.stock_file = stock_file
         self.study_file = study_file
         self.scaler = preprocessing.MinMaxScaler()
-        #self.scaler = StandardScaler()
         self.model = None
 
     def load_and_prepare_data_v1(self):
@@ -95,52 +97,76 @@ class StockStudyPredictor:
         y = targets.values
         return train_test_split(X, y, test_size=0.2, random_state=42)
 
-    def load_and_prepare_data_v2(self):
+    def load_and_prepare_data_v2(self,sequence_length = 5):
         # Load CSV files
         stocks_df = pd.read_csv(self.stock_file)
         studies_df = pd.read_csv(self.study_file)
 
         # Data Preparation
-        # Stock Data
         stocks_df['Date'] = pd.to_datetime(stocks_df['Date'], format='%m/%d/%Y')
         stocks_df['Change %'] = stocks_df['Change %'].str.replace('%', '').astype(float) / 100.0
         stocks_df['Vol.'] = stocks_df['Vol.'].fillna(0)
         stocks_df['Vol.'] = stocks_df['Vol.'].apply(convert_change_percent)
 
-        # Studies Data
         studies_df['Start Date'] = pd.to_datetime(studies_df['Start Date'], errors='coerce')
         studies_df['Primary Completion Date'] = pd.to_datetime(studies_df['Primary Completion Date'], errors='coerce')
         studies_df['Enrollment'] = studies_df['Enrollment'].fillna(studies_df['Enrollment'].mean())
         studies_df = studies_df[studies_df['Sponsor'] == 'Bayer']
+
         # Drop unnecessary columns
         studies_df = studies_df.drop(
             columns=[
                 'Study Type', 'Collaborators', 'Results First Posted', 'Acronym',
-                'Study URL',  'NCT Number', 'Study Title', 'Interventions','Results First Posted', 'Study Design',
-                'Sponsor'
+                'Study URL', 'NCT Number', 'Study Title', 'Interventions',
+                'Results First Posted', 'Study Design', 'Sponsor'
             ]
         )
 
-        # One-hot encode categorical columns like Conditions and Interventions
-        studies_df = pd.get_dummies(studies_df, columns=['Sex', 'Phases','Age','Study Results','Study Status'])
-
+        # One-hot encode categorical columns
+        studies_df = pd.get_dummies(studies_df, columns=['Sex', 'Phases', 'Age', 'Study Results', 'Study Status'])
 
         # Merge datasets on the date
         merged_data = stocks_df.merge(studies_df, left_on='Date', right_on='Start Date', how='inner')
 
         # Select features and target
         features = merged_data.drop(
-            columns=['Change %', 'Date', 'Start Date', 'Primary Completion Date', 'Completion Date',
-                     'First Posted','Last Update Posted'])
-        targets = merged_data['Change %']  # Can change to predict 'Price' if required
+            columns=['Price', 'Date', 'Start Date', 'Primary Completion Date', 'Completion Date',
+                     'First Posted', 'Last Update Posted']
+        )
+        targets = merged_data['Price']
 
         # Normalize features
         X = self.scaler.fit_transform(features)
         y = targets.values
 
-        return train_test_split(X, y, test_size=0.2, random_state=42)
+        # Reshape for LSTM: (batch_size, sequence_length, input_size)
+        X_sequences, y_sequences = self.create_sequences(X, y, sequence_length)
+        num_columns = features.shape[1]
+        print("wow:  ",num_columns)
+        return train_test_split(X_sequences, y_sequences, test_size=0.2, random_state=42)
 
-    def train_model(self, X_train, y_train, X_test=None, y_test=None, epochs=1000, lr=0.001):
+    def create_sequences(self, X, y, sequence_length):
+        """
+        Create sequences from the input features and targets for LSTM training.
+
+        Parameters:
+        - X: Feature array of shape (num_samples, input_size)
+        - y: Target array of shape (num_samples,)
+        - sequence_length: Number of time steps in each sequence
+
+        Returns:
+        - X_sequences: Feature sequences of shape (num_sequences, sequence_length, input_size)
+        - y_sequences: Corresponding targets for each sequence
+        """
+        X_sequences = []
+        y_sequences = []
+        for i in range(len(X) - sequence_length + 1):
+            X_sequences.append(X[i:i + sequence_length])
+            y_sequences.append(y[i + sequence_length - 1])
+
+        return np.array(X_sequences), np.array(y_sequences)
+
+    def train_model(self, X_train, y_train, X_test=None, y_test=None, epochs=10000, lr=0.003):
         """
         Trains the model and optionally evaluates it on test data after each epoch.
 
@@ -155,17 +181,28 @@ class StockStudyPredictor:
         - test_loss_vals: List of test loss values for each epoch (if test data is provided)
         """
         input_size = X_train.shape[1]
-        self.model = StockPredictionModel(input_size)
+        #self.model = StockPredictionModel(input_size)
+
+        # Parameters
+        input_size = 23  # Number of features
+        hidden_size = 64  # Number of LSTM units
+        num_layers = 2  # Number of LSTM layers
+        output_size = 1  # Predicting a single value (e.g., stock price)
+        self.model = LSTMBase(input_size,hidden_size,num_layers,output_size)
+
         criterion = nn.MSELoss()
         optimizer = optim.Adam(self.model.parameters(), lr=lr)
 
         # Convert to tensors
         X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
-        y_train_tensor = torch.tensor(y_train, dtype=torch.float32).view(-1, 1)
+        y_train_tensor = torch.tensor(y_train, dtype=torch.float32)
 
+        # Convert test data if available
         if X_test is not None and y_test is not None:
             X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
-            y_test_tensor = torch.tensor(y_test, dtype=torch.float32).view(-1, 1)
+            y_test_tensor = torch.tensor(y_test, dtype=torch.float32)
+
+        # Training loop remains unchanged
 
         print(f"Target Range: Min={y_train.min()}, Max={y_train.max()}")
 
@@ -178,6 +215,10 @@ class StockStudyPredictor:
             self.model.train()
             optimizer.zero_grad()
             outputs = self.model(X_train_tensor)
+            # Convert target to shape (batch_size, 1)
+            y_train_tensor = y_train_tensor.view(-1, 1)  # For training data
+            y_test_tensor = y_test_tensor.view(-1, 1)  # For test data
+
             loss = criterion(outputs, y_train_tensor)
             loss.backward()
             optimizer.step()
@@ -220,6 +261,7 @@ def plot_testloss_vs_trainloss(train_loss, test_loss, title="train_loss vs test_
 def evaluate_learning():
     print('Loss Value Training: ' + str(train_loss[99]))
     print('Loss Value Test: ' + str(test_loss[99]))
+
     # Example: assuming y_test and predictions are available
     predictions = predictor.predict(X_test)
     mae = mean_absolute_error(y_test, predictions)
@@ -233,7 +275,7 @@ if __name__ == "__main__":
     predictor = StockStudyPredictor("Data/stock_data.csv", "Data/studies_data_v2.csv")
 
     # Load and prepare data
-    X_train, X_test, y_train, y_test = predictor.load_and_prepare_data_v2()
+    X_train, X_test, y_train, y_test = predictor.load_and_prepare_data_v2(10)
 
     # Train the model
     epochs = 100
