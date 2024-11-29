@@ -235,9 +235,15 @@ def plot_testloss_vs_trainloss(train_loss, test_loss, title="train_loss vs test_
     - y_pred: array-like, predicted values
     - title: str, title of the plot
     """
-    plt.plot(train_loss, label='Training loss', color='red')
+    cutoff = int(len(train_loss) * 0.5)
+    train_loss_80 = train_loss[:cutoff]
+    test_loss_80 = test_loss[:cutoff]
+
+    plt.plot(train_loss_80, label='Training loss (50%)', color='red')
+    plt.plot(test_loss_80, label='Test loss (50%)', color='blue')
+    #plt.plot(train_loss, label='Training loss', color='red')
     print(test_loss)
-    plt.plot(test_loss, label='Test loss', color='blue')
+    #plt.plot(test_loss, label='Test loss', color='blue')
     plt.show()
 
 
