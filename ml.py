@@ -37,7 +37,6 @@ class StockPredictionModel(nn.Module):
         return x
 
 
-
 class StockStudyPredictor:
     def predict(self, X):
         """
@@ -71,7 +70,7 @@ class StockStudyPredictor:
         self.scaler = preprocessing.MinMaxScaler()
         self.model = None
 
-    def load_and_prepare_data_v2(self,sequence_length = 5):
+    def load_and_prepare_data_v2(self, sequence_length=5):
         # Load CSV files
         stocks_df = pd.read_csv(self.stock_file)
         studies_df = pd.read_csv(self.study_file)
@@ -82,10 +81,11 @@ class StockStudyPredictor:
         stocks_df['Vol.'] = stocks_df['Vol.'].fillna(0)
         stocks_df['Vol.'] = stocks_df['Vol.'].apply(convert_change_percent)
 
-        #Dates
+        # Dates
         # Convert date columns to datetime
-        date_columns = ["Start Date", "Primary Completion Date", "Completion Date", "First Posted",
-                        "Last Update Posted"]
+        date_columns = ["Completion Date", "First Posted"]
+        # date_columns = ["Start Date", "Primary Completion Date", "Completion Date", "First Posted",
+        #                "Last Update Posted"]
         for col in date_columns:
             studies_df[col] = pd.to_datetime(studies_df[col], errors='coerce')
             # Numeric encoding for date columns
@@ -106,31 +106,30 @@ class StockStudyPredictor:
             columns=[
                 'Study Type', 'Collaborators', 'Results First Posted', 'Acronym',
                 'Study URL', 'NCT Number', 'Study Title', 'Interventions', 'Study Design',
-                'Sponsor'
+                'Sponsor', 'Start Date', 'Primary Completion Date', 'Last Update Posted'
             ]
         )
-
 
         # One-hot encode categorical columns
         studies_df = pd.get_dummies(studies_df, columns=['Sex', 'Phases', 'Age', 'Study Results', 'Study Status'])
 
         # Merge datasets on the date
-        #merged_data = stocks_df.merge(studies_df, left_on='Date', right_on='Start Date', how='inner')
+        # merged_data = stocks_df.merge(studies_df, left_on='Date', right_on='Start Date', how='inner')
         merged_data = stocks_df.merge(studies_df, how='cross')  # Kreuzprodukt beider DataFrames
         merged_data = merged_data[
-            (merged_data['Date'] >= merged_data['Start Date']) &
-            (merged_data['Date'] <= merged_data['Start Date'] + pd.Timedelta(days=7))
+            (merged_data['Date'] >= merged_data['Completion Date']) &
+            (merged_data['Date'] <= merged_data['Completion Date'] + pd.Timedelta(days=7))
             ]
         # Select features and target
         features = merged_data.drop(
-            columns=['Change %',"Start Date", "Primary Completion Date", "Completion Date", "First Posted",
-                        "Last Update Posted","Date" ]
+            columns=['Change %',  "Completion Date", "First Posted",
+                      "Date"]
         )
         targets = merged_data['Change %']
 
         # Save the DataFrame as a CSV file
         filepath = os.path.join("Data", "features.csv")
-        features.to_csv(filepath, index = False)
+        features.to_csv(filepath, index=False)
         # Normalize features
         X = self.scaler.fit_transform(features)
         y = targets.values
@@ -160,7 +159,7 @@ class StockStudyPredictor:
 
         return np.array(X_sequences), np.array(y_sequences)
 
-    def train_model(self, X_train, y_train, X_test=None, y_test=None, epochs=100, lr=0.003):
+    def train_model(self, X_train, y_train, X_test=None, y_test=None, epochs=1000, lr=0.003):
         """
         Trains the AttentionLSTM model and optionally evaluates it on test data after each epoch.
 
@@ -226,6 +225,7 @@ class StockStudyPredictor:
 
 import matplotlib.pyplot as plt
 
+
 def plot_testloss_vs_trainloss(train_loss, test_loss, title="train_loss vs test_loss"):
     """
     Plots a scatter plot comparing true values and predictions.
@@ -241,9 +241,9 @@ def plot_testloss_vs_trainloss(train_loss, test_loss, title="train_loss vs test_
 
     plt.plot(train_loss_80, label='Training loss (50%)', color='red')
     plt.plot(test_loss_80, label='Test loss (50%)', color='blue')
-    #plt.plot(train_loss, label='Training loss', color='red')
+    # plt.plot(train_loss, label='Training loss', color='red')
     print(test_loss)
-    #plt.plot(test_loss, label='Test loss', color='blue')
+    # plt.plot(test_loss, label='Test loss', color='blue')
     plt.show()
 
 
@@ -259,6 +259,8 @@ def evaluate_learning():
     print(f"MAE: {mae}")
     print(f"MSE: {mse}")
     print(f"R²: {r2}")
+
+
 # Example usage
 if __name__ == "__main__":
     predictor = StockStudyPredictor("Data/stock_data.csv", "Data/studies_data_v2.csv")
@@ -268,8 +270,6 @@ if __name__ == "__main__":
 
     # Train the model
     epochs = 100
-    train_loss, test_loss = predictor.train_model(X_train, y_train, X_test,y_test, epochs)
-    plot_testloss_vs_trainloss(train_loss,test_loss, epochs)
+    train_loss, test_loss = predictor.train_model(X_train, y_train, X_test, y_test, epochs)
+    plot_testloss_vs_trainloss(train_loss, test_loss, epochs)
     evaluate_learning()
-
-

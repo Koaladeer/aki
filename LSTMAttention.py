@@ -22,7 +22,7 @@ class AttentionLSTM(nn.Module):
 
         # Attention Mechanism
         attention_scores = self.attention(lstm_out).squeeze(-1)  # (batch_size, seq_len)
-        attention_weights = torch.softmax(attention_scores, dim=1)  # (batch_size, seq_len)
+        attention_weights = torch.sigmoid(attention_scores)  # (batch_size, seq_len)
 
         # Weighted Sum of LSTM Outputs
         context_vector = torch.sum(lstm_out * attention_weights.unsqueeze(-1), dim=1)  # (batch_size, hidden_size)
